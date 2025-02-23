@@ -1,0 +1,148 @@
+{
+  "data": [
+    {
+      "resourceGroupId": "CABLECUT",
+      "dailyCapacities": [
+        0, 12, 12, 12, 12, 12, 0, 
+        0, 12, 12, 12, 12, 12, 0, 
+        0, 12, 12, 12, 12, 12, 0   
+      ]
+    },
+    {
+      "resourceGroupId": "DAS",
+      "dailyCapacities": [
+        0, 30, 30, 30, 30, 30, 0,
+        0, 30, 30, 30, 30, 30, 0,
+        0, 30, 30, 30, 30, 30, 0
+      ]
+    },
+    {
+      "resourceGroupId": "ENGINEER",
+      "dailyCapacities": [
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0
+      ]
+    },
+    {
+      "resourceGroupId": "FLEXASMB",
+      "dailyCapacities": [
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0
+      ]
+    },
+    {
+      "resourceGroupId": "INST",
+      "dailyCapacities": [
+        0, 30, 30, 30, 30, 30, 0,
+        0, 30, 30, 30, 30, 30, 0,
+        0, 30, 30, 30, 30, 30, 0
+      ]
+    },
+    {
+      "resourceGroupId": "IPI",
+      "dailyCapacities": [
+        0, 18, 18, 18, 18, 18, 0,
+        0, 18, 18, 18, 18, 18, 0,
+        0, 18, 18, 18, 18, 18, 0
+      ]
+    },
+    {
+      "resourceGroupId": "LATHE",
+      "dailyCapacities": [
+        0, 66, 66, 66, 66, 66, 0,
+        0, 66, 66, 66, 66, 66, 0,
+        0, 66, 66, 66, 66, 66, 0
+      ]
+    },
+    {
+      "resourceGroupId": "M MACH",
+      "dailyCapacities": [
+        0, 12, 12, 12, 12, 12, 0,
+        0, 12, 12, 12, 12, 12, 0,
+        0, 12, 12, 12, 12, 12, 0
+      ]
+    },
+    {
+      "resourceGroupId": "MECH",
+      "dailyCapacities": [
+        0, 12, 12, 12, 12, 12, 0,
+        0, 12, 12, 12, 12, 12, 0,
+        0, 12, 12, 12, 12, 12, 0
+      ]
+    },
+    {
+      "resourceGroupId": "METALCUT",
+      "dailyCapacities": [
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0
+      ]
+    },
+    {
+      "resourceGroupId": "MILL",
+      "dailyCapacities": [
+        0, 54, 54, 54, 54, 54, 0,
+        0, 54, 54, 54, 54, 54, 0,
+        0, 54, 54, 54, 54, 54, 0
+      ]
+    },
+    {
+      "resourceGroupId": "OUT",
+      "dailyCapacities": [
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0
+      ]
+    },
+    {
+      "resourceGroupId": "PIEZO",
+      "dailyCapacities": [
+        0, 24, 24, 24, 24, 24, 0,
+        0, 24, 24, 24, 24, 24, 0,
+        0, 24, 24, 24, 24, 24, 0
+      ]
+    },
+    {
+      "resourceGroupId": "PIPE",
+      "dailyCapacities": [
+        0, 71, 71, 71, 71, 36, 0,
+        0, 71, 71, 71, 71, 36, 0,
+        0, 71, 71, 71, 71, 36, 0
+      ]
+    },
+    {
+      "resourceGroupId": "PIPE ACC",
+      "dailyCapacities": [
+        0, 0, 0, 0, 0, 49, 0,
+        0, 0, 0, 0, 0, 49, 0,
+        0, 0, 0, 0, 0, 49, 0
+      ]
+    },
+    {
+      "resourceGroupId": "S.P.",
+      "dailyCapacities": [
+        0, 54, 54, 54, 54, 54, 0,
+        0, 54, 54, 54, 54, 54, 0,
+        0, 54, 54, 54, 54, 54, 0
+      ]
+    },
+    {
+      "resourceGroupId": "WAIT",
+      "dailyCapacities": [
+        72, 72, 72, 72, 72, 72, 72,
+        72, 72, 72, 72, 72, 72, 72,
+        72, 72, 72, 72, 72, 72, 72
+      ]
+    },
+    {
+      "resourceGroupId": "WELDING",
+      "dailyCapacities": [
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0,
+        0, 6, 6, 6, 6, 6, 0
+      ]
+    }
+  ]
+} 
