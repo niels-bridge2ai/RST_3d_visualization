@@ -1,5 +1,51 @@
 <template>
   <div ref="container" class="three-container">
+    <!-- Update scenario buttons -->
+    <div class="action-buttons">
+      <label 
+        for="excel-upload" 
+        class="icon-button"
+        title="Upload Excel"
+      >
+        <span class="material-icons">upload</span>
+      </label>
+      <button 
+        class="icon-button"
+        @click="clearScenario"
+        title="Clear"
+      >
+        <span class="material-icons">clear</span>
+      </button>
+      <button 
+        class="icon-button"
+        @click="commitScenario"
+        title="Download"
+      >
+        <span class="material-icons">download</span>
+      </button>
+    </div>
+
+    <input 
+      type="file" 
+      id="excel-upload" 
+      accept=".xlsx,.xls"
+      @change="handleFileUpload"
+      class="hidden"
+    />
+
+    <!-- Add color legend -->
+    <div class="color-legend">
+      <div class="legend-title">Utilization</div>
+      <div class="legend-gradient"></div>
+      <div class="legend-labels">
+        <span>100% or more</span>
+        <span>75%</span>
+        <span>50%</span>
+        <span>25%</span>
+        <span>0%</span>
+      </div>
+    </div>
+
     <!-- Three.js will render here -->
     <button 
       class="save-debug-data"
@@ -69,14 +115,18 @@ type BarType = 'available' | 'scheduled' | 'job'
 
 // Add utility functions
 const getViridisColor = (value: number): THREE.Color => {
-  // value should be between 0 and 1
+  // Flip the value to make yellow represent high utilization
   const colorString = d3.interpolateViridis(value)
   return new THREE.Color(colorString)
 }
 
 const generateDates = () => {
+  // Create dates starting from the start date
   const start = new Date(props.startDate)
+  start.setHours(0, 0, 0, 0)  // Reset time to start of day
   const end = new Date(props.endDate)
+  end.setHours(0, 0, 0, 0)  // Reset time to start of day
+  
   const dates: Date[] = []
   let current = new Date(start)
   
@@ -97,9 +147,17 @@ const {
   getJobCapacity 
 } = useChartData()
 
+const getWeeklyCapacity = (item: CapacityData, date: Date) => {
+  // Get day of week (0-6, where 0 is Sunday)
+  const dayOfWeek = date.getDay()
+  // Use the first week's data and repeat it
+  return item.dailyCapacities[dayOfWeek]
+}
+
 const initThreeScene = () => {
   if (!container.value) return
 
+  // Initialize scene first
   scene = new THREE.Scene()
   scene.background = new THREE.Color(0xf0f0f0)
   
@@ -172,26 +230,56 @@ const initThreeScene = () => {
   
   scene.add(gridHelper)
   
+  // Create initial scene elements
   createAxesLabels()
-  
   createBars()
   animate()
 }
 
 const createBars = () => {
-  if (!props.data) return
+  if (!props.data || !scene) return
   
   // Clear existing bars
-  bars.forEach(bar => scene.remove(bar))
+  bars.forEach(bar => {
+    if (bar && scene.children.includes(bar)) {
+      scene.remove(bar)
+    }
+  })
   bars = []
-  
-  const startDate = new Date('2025-02-24')
+
+  // Clear existing labels
+  scene.children.forEach(child => {
+    if (child instanceof CSS2DObject) {
+      scene.remove(child)
+    }
+  })
+
+  // Create axes and grid first
+  createAxesLabels()
+
   const dates = generateDates()
+
+  // Create date labels once, but position them at the same z-coordinate as their corresponding bars
+  dates.forEach((date, dayIndex) => {
+    const z = dayIndex + 1  // Same z-coordinate calculation as used for bars
+    const newDate = new Date(date);
+// Add one day
+newDate.setDate(newDate.getDate() + 1);
+
+// Create the label using the new date
+const dateLabel = createLabel(newDate.toLocaleDateString('en-US', {
+  weekday: 'short',
+  month: 'numeric',
+  day: 'numeric'
+}));
+    // Position label at exactly the same z position as the bars
+    dateLabel.position.set(-SPACING, 0, z * SPACING)  // Remove the +1 offset
+    scene.add(dateLabel)
+  })
 
   props.data.forEach((item, groupIndex) => {
     if (!item.resourceGroupId) return
     
-    // Skip if a group is selected and this isn't it
     if (props.selectedGroup && item.resourceGroupId !== props.selectedGroup) return
 
     const groupLabel = createLabel(item.resourceGroupId)
@@ -202,32 +290,29 @@ const createBars = () => {
       const x = groupIndex + 1
       const z = dayIndex + 1
 
-      // Get scheduled capacity first to check for bottlenecks
+      // Get weekly repeating capacity using the actual date
+      const dailyCapacity = getWeeklyCapacity(item, date)
+
       const scheduledCapacity = getScheduledCapacity(
         item.resourceGroupId, 
         date,
         props.viewOptions.useScheduled
       )
 
-      // Only show available capacity if it's a bottleneck in bottleneck view
-      const isBottleneck = scheduledCapacity > item.dailyCapacities[dayIndex]
+      const isBottleneck = scheduledCapacity > dailyCapacity
       const showInBottleneckView = currentView !== 'bottleneck' || isBottleneck
 
-      // Create available capacity bar if enabled and should be shown
       if (props.viewOptions.showAvailableCapacity && showInBottleneckView) {
-        const availableBar = createBar(item.dailyCapacities[dayIndex], x, z, 'available')
+        const availableBar = createBar(dailyCapacity, x, z, 'available')
         scene.add(availableBar)
         bars.push(availableBar)
       }
 
-      // Create capacity bar if enabled
-      if (props.viewOptions.showCapacity) {
-        if (scheduledCapacity > 0) {
-          const utilization = Math.min(scheduledCapacity / item.dailyCapacities[dayIndex], 1)
-          const scheduledBar = createBar(scheduledCapacity, x, z, 'scheduled', utilization)
-          scene.add(scheduledBar)
-          bars.push(scheduledBar)
-        }
+      if (props.viewOptions.showCapacity && scheduledCapacity > 0) {
+        const utilization = Math.min(scheduledCapacity / dailyCapacity, 1)
+        const scheduledBar = createBar(scheduledCapacity, x, z, 'scheduled', utilization)
+        scene.add(scheduledBar)
+        bars.push(scheduledBar)
       }
 
       // Create job usage bar if enabled
@@ -244,17 +329,6 @@ const createBars = () => {
         }
       }
     })
-  })
-
-  // Add date labels
-  generateDates().forEach((date, dayIndex) => {
-    const dateLabel = createLabel(date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric'
-    }))
-    dateLabel.position.set(-SPACING, 0, (dayIndex + 1) * SPACING)
-    scene.add(dateLabel)
   })
 }
 
@@ -452,6 +526,24 @@ const saveDebugData = () => {
   generateAndSaveDebugData()
 }
 
+const clearScenario = () => {
+  console.log('Clear scenario clicked')
+}
+
+const commitScenario = () => {
+  console.log('Commit scenario clicked')
+}
+
+// Add the file handler function
+const handleFileUpload = (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (file) {
+    console.log('File selected:', file.name)
+    // Reset input value to allow uploading the same file again
+    (event.target as HTMLInputElement).value = ''
+  }
+}
+
 onMounted(async () => {
   try {
     initializeData()
@@ -555,7 +647,7 @@ defineExpose({
 watch(
   () => props.viewOptions,
   () => {
-    createBars()
+    if (scene) createBars()
   },
   { deep: true }
 )
@@ -564,7 +656,7 @@ watch(
 watch(
   () => props.selectedJob,
   () => {
-    createBars()
+    if (scene) createBars()
   }
 )
 
@@ -572,7 +664,7 @@ watch(
 watch(
   () => props.viewOptions.useScheduled,
   () => {
-    createBars()
+    if (scene) createBars()
   }
 )
 
@@ -580,7 +672,7 @@ watch(
 watch(
   () => props.selectedGroup,
   () => {
-    createBars()
+    if (scene) createBars()
   }
 )
 
@@ -588,7 +680,7 @@ watch(
 watch(
   () => currentView,
   () => {
-    createBars()
+    if (scene) createBars()
   }
 )
 
@@ -596,7 +688,7 @@ watch(
 watch(
   [() => props.startDate, () => props.endDate],
   () => {
-    createBars()
+    if (scene) createBars()
   }
 )
 </script>
@@ -637,5 +729,95 @@ watch(
 
 .save-debug-data:hover {
   background: #45a049;
+}
+
+.action-buttons {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  gap: 8px;
+  z-index: 1000;
+}
+
+.icon-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: white;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: all 0.2s;
+}
+
+.icon-button:hover {
+  background: #f5f5f5;
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+}
+
+.icon-button .material-icons {
+  font-size: 20px;
+}
+
+.color-legend {
+  position: absolute;
+  right: 60px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  z-index: 1000;
+}
+
+.legend-title {
+  font-weight: 500;
+  font-size: 14px;
+  color: #333;
+}
+
+.legend-gradient {
+  width: 20px;
+  height: 200px;
+  background: linear-gradient(
+    to bottom,
+    #fde725, /* Flipped Viridis color scale */
+    #7ad151,
+    #22a884,
+    #2a788e,
+    #414487,
+    #440154
+  );
+  border-radius: 4px;
+}
+
+.legend-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 200px;
+  font-size: 12px;
+  color: #666;
+  padding-left: 8px;
+}
+
+.hidden {
+  display: none;
+}
+
+/* Remove old button styles */
+.scenario-buttons, .upload-container {
+  display: none;
 }
 </style>

@@ -107,7 +107,7 @@
           :value="startDate" 
           @input="updateStartDate"
           :min="minDate"
-          :max="maxDate"
+          :max="endDate"
         />
       </div>
       <div class="date-input">
@@ -137,17 +137,17 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  'update:selectedGroup': [value: string | null]
-  'update:selectedJob': [value: string | null]
-  'bottleneckView': []
-  'trendView': []
-  'threeDView': []
-  'viewOptionsChanged': [options: {
+  (e: 'update:selectedGroup', value: string | null): void
+  (e: 'update:selectedJob', value: string | null): void
+  (e: 'bottleneckView'): void
+  (e: 'trendView'): void
+  (e: 'threeDView'): void
+  (e: 'viewOptionsChanged', options: {
     showAvailableCapacity: boolean
     showCapacity: boolean
     showJobUsage: boolean
     useScheduled: boolean
-  }]
+  }): void
   (e: 'update:startDate', value: string): void
   (e: 'update:endDate', value: string): void
 }>()
@@ -186,8 +186,8 @@ watch(useScheduled, () => {
   emitViewOptions()
 })
 
-const minDate = '2025-02-24'
-const maxDate = '2025-03-17'
+const minDate = '2020-01-01'
+const maxDate = '2030-12-31'
 
 const updateStartDate = (event: Event) => {
   const value = (event.target as HTMLInputElement).value
