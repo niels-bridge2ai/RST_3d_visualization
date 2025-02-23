@@ -98,6 +98,29 @@
         3D View
       </button>
     </div>
+
+    <div class="date-range">
+      <div class="date-input">
+        <label>Start Date:</label>
+        <input 
+          type="date" 
+          :value="startDate" 
+          @input="updateStartDate"
+          :min="minDate"
+          :max="maxDate"
+        />
+      </div>
+      <div class="date-input">
+        <label>End Date:</label>
+        <input 
+          type="date" 
+          :value="endDate" 
+          @input="updateEndDate"
+          :min="startDate"
+          :max="maxDate"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -109,6 +132,8 @@ const props = defineProps<{
   selectedJob: string | null
   resourceGroups: string[]
   jobData: any[] // We'll type this properly later
+  startDate: string
+  endDate: string
 }>()
 
 const emit = defineEmits<{
@@ -123,6 +148,8 @@ const emit = defineEmits<{
     showJobUsage: boolean
     useScheduled: boolean
   }]
+  (e: 'update:startDate', value: string): void
+  (e: 'update:endDate', value: string): void
 }>()
 
 const showAvailableCapacity = ref(true)
@@ -158,6 +185,19 @@ const emitViewOptions = () => {
 watch(useScheduled, () => {
   emitViewOptions()
 })
+
+const minDate = '2025-02-24'
+const maxDate = '2025-03-17'
+
+const updateStartDate = (event: Event) => {
+  const value = (event.target as HTMLInputElement).value
+  emit('update:startDate', value)
+}
+
+const updateEndDate = (event: Event) => {
+  const value = (event.target as HTMLInputElement).value
+  emit('update:endDate', value)
+}
 </script>
 
 <style scoped>
@@ -227,5 +267,27 @@ label {
 
 .checkbox-label input[type="checkbox"] {
   cursor: pointer;
+}
+
+.date-range {
+  display: flex;
+  gap: 20px;
+}
+
+.date-input {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+label {
+  font-size: 14px;
+  color: #666;
+}
+
+input[type="date"] {
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
 }
 </style> 

@@ -26,6 +26,8 @@ const props = withDefaults(defineProps<{
   selectedGroup: string | null
   selectedJob: string | null
   viewOptions: ViewOptions
+  startDate: string
+  endDate: string
 }>(), {
   data: () => [],
   jobData: () => [],
@@ -36,7 +38,9 @@ const props = withDefaults(defineProps<{
     showCapacity: false,
     showJobUsage: false,
     useScheduled: false
-  })
+  }),
+  startDate: '2025-02-24',
+  endDate: '2025-03-17'
 })
 
 const container = ref<HTMLDivElement>()
@@ -71,18 +75,27 @@ const getViridisColor = (value: number): THREE.Color => {
 }
 
 const generateDates = () => {
-  const startDate = new Date('2025-02-24')
+  const start = new Date(props.startDate)
+  const end = new Date(props.endDate)
   const dates: Date[] = []
-  for (let i = 0; i < 21; i++) {  // 3 weeks = 21 days
-    const date = new Date(startDate)
-    date.setDate(startDate.getDate() + i)
-    dates.push(date)
+  let current = new Date(start)
+  
+  while (current <= end) {
+    dates.push(new Date(current))
+    current.setDate(current.getDate() + 1)
   }
-  console.log('Generated dates:', dates.length);
   return dates
 }
 
-const { data, jobs, initializeData, generateDebugData, generateAndSaveDebugData } = useChartData()
+const { 
+  data, 
+  jobs, 
+  initializeData, 
+  generateDebugData, 
+  generateAndSaveDebugData,
+  getScheduledCapacity,
+  getJobCapacity 
+} = useChartData()
 
 const initThreeScene = () => {
   if (!container.value) return
@@ -177,34 +190,40 @@ const createBars = () => {
 
   props.data.forEach((item, groupIndex) => {
     if (!item.resourceGroupId) return
+    
+    // Skip if a group is selected and this isn't it
+    if (props.selectedGroup && item.resourceGroupId !== props.selectedGroup) return
 
     const groupLabel = createLabel(item.resourceGroupId)
     groupLabel.position.set((groupIndex + 1) * SPACING, 0, -SPACING)
     scene.add(groupLabel)
 
-    item.dailyCapacities.forEach((capacity, dayIndex) => {
+    dates.forEach((date, dayIndex) => {
       const x = groupIndex + 1
       const z = dayIndex + 1
-      const date = new Date(startDate)
-      date.setDate(startDate.getDate() + dayIndex)
 
-      // Create available capacity bar if enabled
-      if (props.viewOptions.showAvailableCapacity) {
-        const availableBar = createBar(capacity, x, z, 'available')
+      // Get scheduled capacity first to check for bottlenecks
+      const scheduledCapacity = getScheduledCapacity(
+        item.resourceGroupId, 
+        date,
+        props.viewOptions.useScheduled
+      )
+
+      // Only show available capacity if it's a bottleneck in bottleneck view
+      const isBottleneck = scheduledCapacity > item.dailyCapacities[dayIndex]
+      const showInBottleneckView = currentView !== 'bottleneck' || isBottleneck
+
+      // Create available capacity bar if enabled and should be shown
+      if (props.viewOptions.showAvailableCapacity && showInBottleneckView) {
+        const availableBar = createBar(item.dailyCapacities[dayIndex], x, z, 'available')
         scene.add(availableBar)
         bars.push(availableBar)
       }
 
       // Create capacity bar if enabled
       if (props.viewOptions.showCapacity) {
-        const scheduledCapacity = getScheduledCapacity(
-          item.resourceGroupId, 
-          date,
-          props.viewOptions.useScheduled
-        )
-        
         if (scheduledCapacity > 0) {
-          const utilization = Math.min(scheduledCapacity / capacity, 1)
+          const utilization = Math.min(scheduledCapacity / item.dailyCapacities[dayIndex], 1)
           const scheduledBar = createBar(scheduledCapacity, x, z, 'scheduled', utilization)
           scene.add(scheduledBar)
           bars.push(scheduledBar)
@@ -239,49 +258,46 @@ const createBars = () => {
   })
 }
 
-const createBar = (
-  height: number, 
-  x: number, 
-  z: number, 
-  type: BarType,
-  utilization: number = 0 // For scheduled bars
-) => {
-  const scaledHeight = height / 2
+const createBar = (height: number, x: number, z: number, type: BarType, utilization: number = 0) => {
+  const scaledHeight = Math.max(0.1, (height || 0) / 2)
   
-  const geometry = new THREE.BoxGeometry(BOX_SIZE, scaledHeight, BOX_SIZE)
-  
+  let geometry: THREE.BufferGeometry
   let material: THREE.Material
+  
   switch (type) {
     case 'available':
+      // Make the plane slightly larger than other bars
+      geometry = new THREE.BoxGeometry(BOX_SIZE * 1.2, 0.1, BOX_SIZE * 1.2)
       material = new THREE.MeshPhongMaterial({
-        color: 0x4CAF50,
+        color: 0xFF0000,
         transparent: true,
-        opacity: 0.5  // More transparent
+        opacity: 0.8
       })
-      break
+      const mesh = new THREE.Mesh(geometry, material)
+      mesh.position.set(x * SPACING, scaledHeight, z * SPACING)
+      return mesh
+      
     case 'scheduled':
+      geometry = new THREE.BoxGeometry(BOX_SIZE, scaledHeight, BOX_SIZE)
       material = new THREE.MeshPhongMaterial({
-        color: 0xFF5722,  // Orange color for now
+        color: getViridisColor(utilization).getHex(),
         transparent: true,
-        opacity: 0.8  // More opaque
+        opacity: 0.8
       })
       break
-    case 'job':
+      
+    default:
+      geometry = new THREE.BoxGeometry(BOX_SIZE, scaledHeight, BOX_SIZE)
       material = new THREE.MeshPhongMaterial({
         color: 0x2196F3,
         transparent: true,
         opacity: 0.9
       })
-      break
   }
   
   const mesh = new THREE.Mesh(geometry, material)
   mesh.position.set(x * SPACING, scaledHeight/2, z * SPACING)
-  
-  const group = new THREE.Group()
-  group.add(mesh)
-  
-  return group
+  return mesh
 }
 
 const createLabel = (text: string) => {
@@ -370,7 +386,7 @@ const setOrthographicView = (viewType: ViewType) => {
   // Adjust centers to account for the offset
   const centerX = ((props.data.length + 1) * SPACING) / 2
   const centerZ = ((21 + 1) * SPACING) / 2
-  const maxHeight = 50  // Increased from 10 to 50 to match new scale
+  const maxHeight = 50
   
   if (viewType !== '3d') {
     if (viewType === 'bottleneck') {
@@ -427,6 +443,9 @@ const setOrthographicView = (viewType: ViewType) => {
   controls.object = currentCamera
   currentCamera.updateProjectionMatrix()
   controls.update()
+  
+  // Re-render bars when view changes
+  createBars()
 }
 
 const saveDebugData = () => {
@@ -552,6 +571,30 @@ watch(
 // Add watch for useScheduled changes
 watch(
   () => props.viewOptions.useScheduled,
+  () => {
+    createBars()
+  }
+)
+
+// Add watch for selected group changes
+watch(
+  () => props.selectedGroup,
+  () => {
+    createBars()
+  }
+)
+
+// Add a watch for currentView changes
+watch(
+  () => currentView,
+  () => {
+    createBars()
+  }
+)
+
+// Add watch for date changes
+watch(
+  [() => props.startDate, () => props.endDate],
   () => {
     createBars()
   }

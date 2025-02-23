@@ -5,6 +5,8 @@
     </div>
     <template v-else>
       <ChartControls 
+        v-model:startDate="startDate"
+        v-model:endDate="endDate"
         v-model:selectedGroup="selectedGroup"
         v-model:selectedJob="selectedJob"
         :resource-groups="resourceGroups"
@@ -21,6 +23,8 @@
         :selected-group="selectedGroup"
         :selected-job="selectedJob"
         :view-options="viewOptions"
+        :start-date="startDate"
+        :end-date="endDate"
       />
     </template>
   </div>
@@ -44,6 +48,9 @@ const viewOptions = ref<ViewOptions>({
   showJobUsage: false,
   useScheduled: false
 })
+
+const startDate = ref('2025-02-24')
+const endDate = ref('2025-03-17')
 
 const handleViewOptionsChanged = (options: ViewOptions) => {
   viewOptions.value = options
