@@ -2,11 +2,7 @@
   "data": [
     {
       "resourceGroupId": "CABLECUT",
-      "dailyCapacities": [
-        0, 12, 12, 12, 12, 12, 0, 
-        0, 12, 12, 12, 12, 12, 0, 
-        0, 12, 12, 12, 12, 12, 0   
-      ]
+      "dailyCapacities": [24, 24, 24, 24, 24, 24, 24]
     },
     {
       "resourceGroupId": "DAS",

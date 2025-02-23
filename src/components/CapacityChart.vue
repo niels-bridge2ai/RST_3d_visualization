@@ -6,15 +6,21 @@
     <template v-else>
       <ChartControls 
         v-model:selectedGroup="selectedGroup"
+        v-model:selectedJob="selectedJob"
         :resource-groups="resourceGroups"
+        :job-data="jobs"
         @bottleneck-view="() => threeScene?.setOrthographicView('bottleneck')"
         @trend-view="() => threeScene?.setOrthographicView('trend')"
         @three-d-view="() => threeScene?.setOrthographicView('3d')"
+        @view-options-changed="handleViewOptionsChanged"
       />
       <ThreeScene 
         ref="threeScene"
-        :data="chartData"
+        :data="data"
+        :jobData="jobs"
         :selected-group="selectedGroup"
+        :selected-job="selectedJob"
+        :view-options="viewOptions"
       />
     </template>
   </div>
@@ -22,22 +28,30 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { useChartData } from '@/composables/useChartData'
+import { useChartData } from '../composables/useChartData'
 import ThreeScene from './ThreeScene.vue'
 import ChartControls from './ChartControls.vue'
+import type { ViewOptions } from '@/types/chart.types'
 
 const threeScene = ref<InstanceType<typeof ThreeScene>>()
-const { data: chartData, loadData, resourceGroups } = useChartData()
+const { data, jobs, initializeData, resourceGroups } = useChartData()
 const selectedGroup = ref<string | null>(null)
+const selectedJob = ref<string | null>(null)
 const loading = ref(true)
+const viewOptions = ref<ViewOptions>({
+  showAvailableCapacity: true,
+  showCapacity: false,
+  showJobUsage: false,
+  useScheduled: false
+})
 
-const handleTopView = () => {
-  threeScene.value?.setTopView()
+const handleViewOptionsChanged = (options: ViewOptions) => {
+  viewOptions.value = options
 }
 
-onMounted(async () => {
+onMounted(() => {
   try {
-    await loadData()
+    initializeData()
   } finally {
     loading.value = false
   }

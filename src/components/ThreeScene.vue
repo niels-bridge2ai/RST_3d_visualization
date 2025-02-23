@@ -1,6 +1,12 @@
 <template>
   <div ref="container" class="three-container">
     <!-- Three.js will render here -->
+    <button 
+      class="save-debug-data"
+      @click="saveDebugData"
+    >
+      Save Debug Data
+    </button>
   </div>
 </template>
 
@@ -8,16 +14,29 @@
 import { ref, onMounted, watch, onUnmounted } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls'
-import type { CapacityData } from '@/types/chart.types'
+import type { CapacityData, JobData, ViewOptions } from '@/types/chart.types'
 import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer'
 import { withDefaults } from 'vue'
+import * as d3 from 'd3-scale-chromatic'
+import { useChartData } from '@/composables/useChartData'
 
 const props = withDefaults(defineProps<{
   data: CapacityData[]
+  jobData: JobData[]
   selectedGroup: string | null
+  selectedJob: string | null
+  viewOptions: ViewOptions
 }>(), {
   data: () => [],
-  selectedGroup: null
+  jobData: () => [],
+  selectedGroup: null,
+  selectedJob: null,
+  viewOptions: () => ({
+    showAvailableCapacity: true,
+    showCapacity: false,
+    showJobUsage: false,
+    useScheduled: false
+  })
 })
 
 const container = ref<HTMLDivElement>()
@@ -41,6 +60,16 @@ let currentView: ViewType = '3d'
 const SPACING = 8    // Increased from 4 to 8
 const BOX_SIZE = 3   // Increased from 2 to 3
 
+// Add after existing constants
+type BarType = 'available' | 'scheduled' | 'job'
+
+// Add utility functions
+const getViridisColor = (value: number): THREE.Color => {
+  // value should be between 0 and 1
+  const colorString = d3.interpolateViridis(value)
+  return new THREE.Color(colorString)
+}
+
 const generateDates = () => {
   const startDate = new Date('2025-02-24')
   const dates: Date[] = []
@@ -52,6 +81,8 @@ const generateDates = () => {
   console.log('Generated dates:', dates.length);
   return dates
 }
+
+const { data, jobs, initializeData, generateDebugData, generateAndSaveDebugData } = useChartData()
 
 const initThreeScene = () => {
   if (!container.value) return
@@ -135,53 +166,122 @@ const initThreeScene = () => {
 }
 
 const createBars = () => {
-  if (!props.data) return;
+  if (!props.data) return
   
+  // Clear existing bars
   bars.forEach(bar => scene.remove(bar))
   bars = []
   
+  const startDate = new Date('2025-02-24')
+  const dates = generateDates()
+
   props.data.forEach((item, groupIndex) => {
+    if (!item.resourceGroupId) return
+
     const groupLabel = createLabel(item.resourceGroupId)
-    // Move group labels one unit away from Z axis
     groupLabel.position.set((groupIndex + 1) * SPACING, 0, -SPACING)
     scene.add(groupLabel)
 
     item.dailyCapacities.forEach((capacity, dayIndex) => {
-      const bar = createBar(capacity, groupIndex + 1, dayIndex + 1)  // Add 1 to both indices
-      scene.add(bar)
-      bars.push(bar)
+      const x = groupIndex + 1
+      const z = dayIndex + 1
+      const date = new Date(startDate)
+      date.setDate(startDate.getDate() + dayIndex)
+
+      // Create available capacity bar if enabled
+      if (props.viewOptions.showAvailableCapacity) {
+        const availableBar = createBar(capacity, x, z, 'available')
+        scene.add(availableBar)
+        bars.push(availableBar)
+      }
+
+      // Create capacity bar if enabled
+      if (props.viewOptions.showCapacity) {
+        const scheduledCapacity = getScheduledCapacity(
+          item.resourceGroupId, 
+          date,
+          props.viewOptions.useScheduled
+        )
+        
+        if (scheduledCapacity > 0) {
+          const utilization = Math.min(scheduledCapacity / capacity, 1)
+          const scheduledBar = createBar(scheduledCapacity, x, z, 'scheduled', utilization)
+          scene.add(scheduledBar)
+          bars.push(scheduledBar)
+        }
+      }
+
+      // Create job usage bar if enabled
+      if (props.viewOptions.showJobUsage && props.selectedJob) {
+        const jobCapacity = getJobCapacity(
+          Number(props.selectedJob), 
+          date,
+          props.viewOptions.useScheduled
+        )
+        if (jobCapacity > 0) {
+          const jobBar = createBar(jobCapacity, x, z, 'job')
+          scene.add(jobBar)
+          bars.push(jobBar)
+        }
+      }
     })
   })
 
+  // Add date labels
   generateDates().forEach((date, dayIndex) => {
     const dateLabel = createLabel(date.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric'
     }))
-    // Move date labels one unit away from X axis
     dateLabel.position.set(-SPACING, 0, (dayIndex + 1) * SPACING)
     scene.add(dateLabel)
   })
 }
 
-const createBar = (height: number, x: number, z: number) => {
-  // Change scaling factor from /10 to /2 to make bars 5x taller
+const createBar = (
+  height: number, 
+  x: number, 
+  z: number, 
+  type: BarType,
+  utilization: number = 0 // For scheduled bars
+) => {
   const scaledHeight = height / 2
   
-  // Increase box width and depth
-  const geometry = new THREE.BoxGeometry(BOX_SIZE, 0.1, BOX_SIZE)
-  const material = new THREE.MeshPhongMaterial({
-    color: 0xff0000,
-    side: THREE.DoubleSide
-  })
+  const geometry = new THREE.BoxGeometry(BOX_SIZE, scaledHeight, BOX_SIZE)
+  
+  let material: THREE.Material
+  switch (type) {
+    case 'available':
+      material = new THREE.MeshPhongMaterial({
+        color: 0x4CAF50,
+        transparent: true,
+        opacity: 0.5  // More transparent
+      })
+      break
+    case 'scheduled':
+      material = new THREE.MeshPhongMaterial({
+        color: 0xFF5722,  // Orange color for now
+        transparent: true,
+        opacity: 0.8  // More opaque
+      })
+      break
+    case 'job':
+      material = new THREE.MeshPhongMaterial({
+        color: 0x2196F3,
+        transparent: true,
+        opacity: 0.9
+      })
+      break
+  }
   
   const mesh = new THREE.Mesh(geometry, material)
+  mesh.position.set(x * SPACING, scaledHeight/2, z * SPACING)
   
-  // Use new spacing constant
-  mesh.position.set(x * SPACING, scaledHeight, z * SPACING)
+  const group = new THREE.Group()
+  group.add(mesh)
   
-  return mesh
+  return group
 }
 
 const createLabel = (text: string) => {
@@ -249,10 +349,18 @@ const createAxesLabels = () => {
 }
 
 const animate = () => {
-  requestAnimationFrame(animate)
-  controls.update()
-  renderer.render(scene, currentCamera)
-  labelRenderer.value?.render(scene, currentCamera)
+  if (!scene || !renderer || !currentCamera) {
+    return
+  }
+  
+  try {
+    requestAnimationFrame(animate)
+    controls?.update()
+    renderer.render(scene, currentCamera)
+    labelRenderer.value?.render(scene, currentCamera)
+  } catch (error) {
+    console.error('Animation error:', error)
+  }
 }
 
 const setOrthographicView = (viewType: ViewType) => {
@@ -321,46 +429,133 @@ const setOrthographicView = (viewType: ViewType) => {
   controls.update()
 }
 
-onMounted(() => {
-  initThreeScene()
-  
-  window.addEventListener('resize', () => {
-    if (!container.value) return
+const saveDebugData = () => {
+  generateAndSaveDebugData()
+}
+
+onMounted(async () => {
+  try {
+    initializeData()
+    // Then initialize the scene
+    initThreeScene()
     
-    const aspect = container.value.clientWidth / container.value.clientHeight
-    
-    if (currentView !== '3d') {
-      const viewSize = 50
-      orthographicCamera.left = -viewSize * aspect
-      orthographicCamera.right = viewSize * aspect
-      orthographicCamera.top = viewSize
-      orthographicCamera.bottom = -viewSize
-      orthographicCamera.updateProjectionMatrix()
+    window.addEventListener('resize', () => {
+      if (!container.value) return
       
-      // NEW: Update trendCamera on resize as well
-      trendCamera.left = -viewSize * aspect
-      trendCamera.right = viewSize * aspect
-      trendCamera.top = viewSize
-      trendCamera.bottom = -viewSize
-      trendCamera.updateProjectionMatrix()
-    } else {
-      perspectiveCamera.aspect = aspect
-      perspectiveCamera.updateProjectionMatrix()
-    }
-    
-    renderer.setSize(container.value.clientWidth, container.value.clientHeight)
-    labelRenderer.value?.setSize(container.value.clientWidth, container.value.clientHeight)
-  })
+      const aspect = container.value.clientWidth / container.value.clientHeight
+      
+      if (currentView !== '3d') {
+        const viewSize = 50
+        orthographicCamera.left = -viewSize * aspect
+        orthographicCamera.right = viewSize * aspect
+        orthographicCamera.top = viewSize
+        orthographicCamera.bottom = -viewSize
+        orthographicCamera.updateProjectionMatrix()
+        
+        // NEW: Update trendCamera on resize as well
+        trendCamera.left = -viewSize * aspect
+        trendCamera.right = viewSize * aspect
+        trendCamera.top = viewSize
+        trendCamera.bottom = -viewSize
+        trendCamera.updateProjectionMatrix()
+      } else {
+        perspectiveCamera.aspect = aspect
+        perspectiveCamera.updateProjectionMatrix()
+      }
+      
+      renderer.setSize(container.value.clientWidth, container.value.clientHeight)
+      labelRenderer.value?.setSize(container.value.clientWidth, container.value.clientHeight)
+    })
+  } catch (error) {
+    console.error('Error:', error)
+  }
 })
 
 onUnmounted(() => {
-  renderer?.dispose()
-  labelRenderer.value?.dispose()
+  // Stop animation loop first
+  if (typeof window !== 'undefined') {
+    window.cancelAnimationFrame(animate)
+  }
+
+  // Dispose of controls before scene cleanup
+  if (controls) {
+    controls.dispose()
+    controls = null
+  }
+
+  // Remove all objects from scene
+  if (scene) {
+    scene.traverse((object) => {
+      if (object instanceof THREE.Mesh) {
+        object.geometry.dispose()
+        if (object.material instanceof THREE.Material) {
+          object.material.dispose()
+        } else if (Array.isArray(object.material)) {
+          object.material.forEach(material => material.dispose())
+        }
+      }
+    })
+    scene.clear()
+    scene = null
+  }
+  
+  // Clean up renderers
+  if (renderer) {
+    if (container.value) {
+      container.value.removeChild(renderer.domElement)
+    }
+    renderer.dispose()
+    renderer = null
+  }
+
+  if (labelRenderer.value) {
+    if (container.value && labelRenderer.value.domElement) {
+      container.value.removeChild(labelRenderer.value.domElement)
+    }
+    labelRenderer.value = null
+  }
+
+  // Clear container
+  if (container.value) {
+    container.value.innerHTML = ''
+  }
+
+  // Clear references
+  bars = []
+  currentCamera = null
+  perspectiveCamera = null
+  orthographicCamera = null
+  trendCamera = null
 })
 
 defineExpose({
   setOrthographicView
 })
+
+// Add watch for view options changes
+watch(
+  () => props.viewOptions,
+  () => {
+    createBars()
+  },
+  { deep: true }
+)
+
+// Add watch for selected job changes
+watch(
+  () => props.selectedJob,
+  () => {
+    createBars()
+  }
+)
+
+// Add watch for useScheduled changes
+watch(
+  () => props.viewOptions.useScheduled,
+  () => {
+    createBars()
+  }
+)
 </script>
 
 <style scoped>
@@ -382,5 +577,22 @@ defineExpose({
   padding: 3px 6px;
   white-space: nowrap;
   font-size: 9px;  /* Smaller font to fit longer date strings */
+}
+
+.save-debug-data {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  background: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  z-index: 1000;
+}
+
+.save-debug-data:hover {
+  background: #45a049;
 }
 </style>
