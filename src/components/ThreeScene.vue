@@ -1,35 +1,68 @@
 <template>
   <div ref="container" class="three-container">
+    <!-- Keep only operation mapping form -->
+    <ExcelMappingForm
+      v-if="showOperationMapping"
+      :show-mapping="showOperationMapping"
+      :excel-columns="operationColumns"
+      :excel-data="operationData"
+      :mapping-type="'operation'"
+      @close="showOperationMapping = false"
+      @import="handleOperationImport"
+    />
+
     <!-- Update scenario buttons -->
     <div class="action-buttons">
       <label 
-        for="excel-upload" 
+        for="operation-upload" 
         class="icon-button"
-        title="Upload Excel"
+        title="Upload Operations"
       >
-        <span class="material-icons">upload</span>
+        <i class="fa-solid fa-file-import"></i>
+      </label>
+      <label 
+        for="capacity-upload" 
+        class="icon-button"
+        title="Upload Capacity"
+      >
+        <i class="fa-solid fa-calendar-plus"></i>
       </label>
       <button 
         class="icon-button"
         @click="clearScenario"
         title="Clear"
       >
-        <span class="material-icons">clear</span>
+        <i class="fa-solid fa-trash"></i>
       </button>
       <button 
         class="icon-button"
         @click="commitScenario"
         title="Download"
       >
-        <span class="material-icons">download</span>
+        <i class="fa-solid fa-download"></i>
+      </button>
+      <button 
+        class="icon-button"
+        @click="runScenario"
+        title="Run Scenario"
+      >
+        <i class="fa-solid fa-play"></i>
       </button>
     </div>
 
+    <!-- Add both file inputs -->
     <input 
       type="file" 
-      id="excel-upload" 
+      id="operation-upload" 
       accept=".xlsx,.xls"
-      @change="handleFileUpload"
+      @change="handleOperationFileUpload"
+      class="hidden"
+    />
+    <input 
+      type="file" 
+      id="capacity-upload" 
+      accept=".xlsx,.xls"
+      @change="handleCapacityFileUpload"
       class="hidden"
     />
 
@@ -65,6 +98,8 @@ import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRe
 import { withDefaults } from 'vue'
 import * as d3 from 'd3-scale-chromatic'
 import { useChartData } from '@/composables/useChartData'
+import ExcelMappingForm from './ExcelMappingForm.vue'
+import * as XLSX from 'xlsx'
 
 const props = withDefaults(defineProps<{
   data: CapacityData[]
@@ -138,21 +173,13 @@ const generateDates = () => {
 }
 
 const { 
-  data, 
-  jobs, 
   initializeData, 
   generateDebugData, 
   generateAndSaveDebugData,
   getScheduledCapacity,
-  getJobCapacity 
+  getJobCapacity,
+  getWeeklyCapacity
 } = useChartData()
-
-const getWeeklyCapacity = (item: CapacityData, date: Date) => {
-  // Get day of week (0-6, where 0 is Sunday)
-  const dayOfWeek = date.getDay()
-  // Use the first week's data and repeat it
-  return item.dailyCapacities[dayOfWeek]
-}
 
 const initThreeScene = () => {
   if (!container.value) return
@@ -237,7 +264,16 @@ const initThreeScene = () => {
 }
 
 const createBars = () => {
-  if (!props.data || !scene) return
+  console.log('Creating bars with:', {
+    data: props.data,
+    jobs: props.jobData,
+    scene: !!scene
+  })
+
+  if (!props.data || !scene) {
+    console.warn('Missing required data or scene')
+    return
+  }
   
   // Clear existing bars
   bars.forEach(bar => {
@@ -534,14 +570,85 @@ const commitScenario = () => {
   console.log('Commit scenario clicked')
 }
 
-// Add the file handler function
-const handleFileUpload = (event: Event) => {
+// Add run handler
+const runScenario = () => {
+  console.log('Run scenario clicked')
+}
+
+// Add new state for capacity upload
+const showOperationMapping = ref(false)
+const showCapacityMapping = ref(false)
+const operationColumns = ref<string[]>([])
+const capacityColumns = ref<string[]>([])
+const operationData = ref<any[]>([])
+const capacityData = ref<any[]>([])
+
+// Split file handlers
+const handleOperationFileUpload = async (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (file) {
-    console.log('File selected:', file.name)
-    // Reset input value to allow uploading the same file again
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      
+      const jsonData = XLSX.utils.sheet_to_json(worksheet)
+      operationColumns.value = Object.keys(jsonData[0] || {})
+      operationData.value = jsonData
+      
+      showOperationMapping.value = true
+    } catch (error) {
+      console.error('Error reading operations Excel file:', error)
+    }
     (event.target as HTMLInputElement).value = ''
   }
+}
+
+const handleCapacityFileUpload = async (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (file) {
+    try {
+      const data = await file.arrayBuffer()
+      const workbook = XLSX.read(data)
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]]
+      
+      const jsonData = XLSX.utils.sheet_to_json(worksheet)
+      // Import capacity data directly without showing mapping form
+      const mappedData = jsonData.map(row => {
+        const values = Object.values(row)
+        return {
+          resourceGroupId: values[0],
+          dailyCapacities: [
+            Number(values[1]) || 24, // Sunday
+            Number(values[2]) || 24, // Monday
+            Number(values[3]) || 24, // Tuesday
+            Number(values[4]) || 24, // Wednesday
+            Number(values[5]) || 24, // Thursday
+            Number(values[6]) || 24, // Friday
+            Number(values[7]) || 24  // Saturday
+          ]
+        }
+      })
+      
+      updateCapacityData(mappedData)
+      if (scene) createBars()
+    } catch (error) {
+      console.error('Error reading capacity Excel file:', error)
+    }
+    (event.target as HTMLInputElement).value = ''
+  }
+}
+
+const handleOperationImport = (mappedData: any[]) => {
+  updateOperationData(mappedData)
+  showOperationMapping.value = false
+  if (scene) createBars()
+}
+
+const handleCapacityImport = (mappedData: any[]) => {
+  updateCapacityData(mappedData)
+  showCapacityMapping.value = false
+  if (scene) createBars()
 }
 
 onMounted(async () => {
@@ -691,6 +798,18 @@ watch(
     if (scene) createBars()
   }
 )
+
+// Add watch for jobs data changes
+watch(
+  props.jobData,
+  () => {
+    if (scene) {
+      console.log('Jobs data updated, recreating bars')
+      createBars()
+    }
+  },
+  { deep: true }
+)
 </script>
 
 <style scoped>
@@ -734,17 +853,17 @@ watch(
 .action-buttons {
   position: absolute;
   top: 20px;
-  right: 20px;
+  right: 40px;  /* Increased from 20px */
   display: flex;
-  gap: 8px;
+  gap: 12px;    /* Increased from 8px */
   z-index: 1000;
 }
 
 .icon-button {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  border: 1px solid #ddd;  /* Added border */
   background: white;
   color: #666;
   cursor: pointer;
@@ -761,8 +880,8 @@ watch(
   box-shadow: 0 3px 6px rgba(0,0,0,0.15);
 }
 
-.icon-button .material-icons {
-  font-size: 20px;
+.icon-button i {
+  font-size: 14px;  /* Slightly smaller icons */
 }
 
 .color-legend {

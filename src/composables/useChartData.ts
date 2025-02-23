@@ -13,22 +13,47 @@ export function useChartData() {
   const jobs = ref<JobData[]>([])
   
   const initializeData = () => {
-    try {
-      // Process capacity data
-      const capacityArray = (Array.isArray(capacityDataImport) 
-        ? capacityDataImport 
-        : (capacityDataImport as any).data || []) as CapacityData[]
-      data.value = capacityArray
+    // This can be empty now or set some initial state
+  }
 
-      // Process operation data
-      const operationArray = (Array.isArray(operationDataImport)
-        ? operationDataImport
-        : (operationDataImport as any).data || []) as JobData[]
-      
-      jobs.value = operationArray
-    } catch (error) {
-      console.error('Error initializing data:', error)
-    }
+  const updateOperationData = (excelData: any[]) => {
+    console.log('Updating operation data:', excelData)
+    jobs.value = excelData.map(row => ({
+      Job: row.Job,
+      Opr: row.Opr,
+      resourceGroupId: row.resourceGroupId,
+      "Planned Start Date": row["Planned Start Date"],
+      "Scheduled Start Date": row["Scheduled Start Date"] || null,
+      "StandardProcessTime (hr)": row["StandardProcessTime (hr)"],
+      "Scheduled Multi-day Breakdown": row["Scheduled Multi-day Breakdown"],
+      "Planned Multi-day Breakdown": row["Planned Multi-day Breakdown"]
+    }))
+    console.log('Updated jobs:', jobs.value)
+
+    // Create capacity data from unique resource groups
+    const uniqueGroups = [...new Set(excelData.map(row => row.resourceGroupId))]
+    data.value = uniqueGroups.map(groupId => ({
+      resourceGroupId: groupId,
+      dailyCapacities: [24, 24, 24, 24, 24, 24, 24] // Default to 24 hours per day
+    }))
+  }
+
+  const updateCapacityData = (excelData: any[]) => {
+    console.log('Updating capacity data:', excelData)
+    data.value = excelData.map(row => {
+      const allValues = Object.values(row)
+      const resourceGroupId = String(allValues[0]).trim()
+      const capacities = allValues.slice(1, 8).map(val => {
+        const num = Number(val)
+        return isNaN(num) ? 24 : num
+      })
+
+      return {
+        resourceGroupId,
+        dailyCapacities: capacities.length === 7 ? capacities : [24, 24, 24, 24, 24, 24, 24]
+      }
+    })
+    console.log('Updated capacity data:', data.value)
   }
 
   const resourceGroups = computed(() => {
@@ -168,6 +193,13 @@ export function useChartData() {
     return debugData
   }
 
+  const getWeeklyCapacity = (item: CapacityData, date: Date) => {
+    // Get day of week (0-6, where 0 is Sunday)
+    const dayOfWeek = date.getDay()
+    console.log('Getting capacity for', item.resourceGroupId, 'on day', dayOfWeek, ':', item.dailyCapacities[dayOfWeek])
+    return item.dailyCapacities[dayOfWeek]
+  }
+
   return {
     data,
     jobs,
@@ -176,6 +208,9 @@ export function useChartData() {
     getJobCapacity,
     generateDebugData,
     generateAndSaveDebugData,
-    initializeData
+    initializeData,
+    updateOperationData,
+    updateCapacityData,
+    getWeeklyCapacity
   }
 } 
